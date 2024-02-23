@@ -1,16 +1,15 @@
 import os
+import dill
 import streamlit as st
 from PyPDF2 import PdfReader
 from dotenv import load_dotenv
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-import pickle
 from langchain.chains import ConversationalRetrievalChain
 from langchain_community.chat_models import ChatOpenAI
 from langchain_openai import ChatOpenAI
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
-
 
 # Function to read PDF content
 def read_pdf(file_path):
@@ -40,15 +39,24 @@ def main():
         Choose the desired PDF, then perform a query.
         ''')
 
-
     custom_names = list(pdf_mapping.keys())
-    selected_custom_name = st.sidebar.selectbox('Choose your PDF', ['', *custom_names])
-    selected_actual_name = pdf_mapping.get(selected_custom_name)
-
-    if selected_actual_name:
+    custom_names.append("Upload PDF")
+    selected_custom_name = st.sidebar.selectbox('Choose your PDF', custom_names)
+    
+    if selected_custom_name == "Upload PDF":
+        uploaded_file = st.sidebar.file_uploader("Upload PDF", type=["pdf"])
+        if uploaded_file:
+            file_path = f"temp_{uploaded_file.name}"
+            with open(file_path, "wb") as f:
+                f.write(uploaded_file.getvalue())
+        else:
+            file_path = None
+    else:
+        selected_actual_name = pdf_mapping.get(selected_custom_name)
         pdf_folder = "pdfs"
         file_path = os.path.join(pdf_folder, selected_actual_name)
 
+    if file_path:
         try:
             text = read_pdf(file_path)
             st.info("The content of the PDF is hidden. Type your query in the chat window.")
@@ -86,7 +94,7 @@ def main():
 
         if not os.path.exists(pickle_file_path):
             with open(pickle_file_path, "wb") as f:
-                pickle.dump(vectorstore, f)
+                dill.dump(vectorstore, f)
 
         # Load the Langchain chatbot
         llm = ChatOpenAI(temperature=0, max_tokens=1000, model_name="gpt-3.5-turbo")
@@ -100,7 +108,8 @@ def main():
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
-        if prompt := st.chat_input("Ask your questions from PDF "f'{selected_custom_name}'"?"):
+        if prompt := st.chat_input(f"Ask your questions from PDF '{selected_custom_name}'"):
+            st.session_state.messages = []  # Reset the chat history
             st.session_state.messages.append({"role": "user", "content": prompt})
             with st.chat_message("user"):
                 st.markdown(prompt)
